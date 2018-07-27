@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>arm_warnings</name>
+  <version>1.0.0</version>
+  <description>Give audible warnings of various conditions.</description>
+
+  <author email="blakeanderson@utexas.edu">Blake Anderson</author>
+  <author email="andyz@utexas.edu">Andy Zelenak</author>
+  <maintainer email="andyz@utexas.edu">Andy Zelenak</maintainer>
+
+  <license>TODO</license>
+
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>moveit_ros_move_group</depend>
+  <depend>moveit_ros_planning_interface</depend>
+  <depend>roscpp</depend>
+
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+  </export>
+
+</package>

@@ -1,0 +1,68 @@
+#ifndef arm_warning_H
+#define arm_warning_H
+
+#include <eigen3/Eigen/Eigenvalues>
+#include <moveit/move_group_interface/move_group.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_state/robot_state.h>
+#include "ros/ros.h"
+#include "sensor_msgs/JointState.h"
+#include "sound_play/sound_play.h"
+#include <visualization_msgs/Marker.h>
+
+namespace arm_warnings
+{
+
+class arm_warnings
+{
+public:
+  arm_warnings();
+
+private:
+  void jointStateCB(sensor_msgs::JointStateConstPtr msg);
+
+  const sensor_msgs::JointState extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const;
+
+  //bool checkConditionNumber(const Eigen::MatrixXd &matrix, double threshold) const;
+
+  //void throwSingularityAlarm();
+
+  enum warn_or_error { fine = 0, warning = 1, error = 2 };
+  warn_or_error checkJointLimits(const sensor_msgs::JointState &group_joints);
+
+  void throwJointLimitWarning();
+  void throwJointLimitError();
+
+  // Create a paired list of joint & tf names so we can get the joint locations
+  void create_jt_tf_list(std::string prefix);
+
+///////////////////////////////
+
+  double cond_number_threshold_, rad_min_, rad_max_;
+
+  const robot_state::JointModelGroup* joint_model_group_;
+
+  std::vector<std::string> joint_names_;
+
+  ros::Subscriber joint_state_sub_;
+
+  robot_state::RobotStatePtr kinematic_state_;
+
+  moveit::planning_interface::MoveGroup* move_group_;
+
+  std::string move_group_name_, troublesome_jt_;
+
+  ros::NodeHandle n_;
+
+  visualization_msgs::Marker jt_marker_;
+
+  ros::Publisher marker_pub_;
+
+  int marker_id_;
+
+  std::vector< std::pair<std::string, std::string> > jt_tf_names_;
+};
+
+} // End arm_warnings namespace
+
+#endif
