@@ -213,6 +213,7 @@ void arm_warnings::arm_warnings::throwJointLimitWarning()
   {
   	if ( jt_tf_names_[i].first == troublesome_jt_ )
   	{
+      //Frame id must match a tf
       jt_marker_.header.frame_id = jt_tf_names_[i].second;
       break;
   	}
@@ -235,6 +236,7 @@ void arm_warnings::arm_warnings::throwJointLimitError()
   // Find the tf frame corresponding to the troublesome jt
   for (int i=0; i<jt_tf_names_.size(); i++)
   {
+    //Frame id must match a tf
   	if ( jt_tf_names_[i].first == troublesome_jt_ )
   	{
       jt_marker_.header.frame_id = jt_tf_names_[i].second;
@@ -255,6 +257,7 @@ void arm_warnings::arm_warnings::throwJointLimitError()
 // Create a paired list of joint & tf names so we can get the joint locations
 void arm_warnings::arm_warnings::create_jt_tf_list(std::string prefix)
 {
+  //
   std::pair<std::string, std::string> p;
 
   p.first = prefix + "shoulder_pan_joint"; p.second = prefix + "shoulder_link";

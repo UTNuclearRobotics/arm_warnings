@@ -28,3 +28,7 @@ add_executable(arm_warnings src/arm_warnings.cpp)
 target_link_libraries(arm_warnings ${catkin_LIBRARIES} ${eigen3_LIBRARIES} )
 add_dependencies(arm_warnings ${catkin_EXPORTED_TARGETS})
 
+add_executable(singularity_marker src/singularity_marker.cpp)
+target_link_libraries(singularity_marker ${catkin_LIBRARIES} ${eigen3_LIBRARIES} )
+add_dependencies(singularity_marker ${catkin_EXPORTED_TARGETS})
+
