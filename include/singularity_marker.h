@@ -9,6 +9,7 @@
 #include "sensor_msgs/JointState.h"
 #include "sound_play/sound_play.h"
 #include <visualization_msgs/Marker.h>
+#include <std_msgs/Float32.h>
 
 namespace arm_warnings
 {
@@ -38,7 +39,7 @@ private:
 
   robot_state::RobotStatePtr kinematic_state_;
 
-  moveit::planning_interface::MoveGroup* move_group_;
+  //moveit::planning_interface::MoveGroupInterface move_group_;
 
   std::string move_group_name_;
 
@@ -46,7 +47,7 @@ private:
 
   visualization_msgs::Marker sin_marker_;
 
-  ros::Publisher marker_pub_;
+  ros::Publisher marker_pub_, condition_pub_;
 
   int marker_id_;
 

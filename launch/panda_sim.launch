@@ -1,0 +1,5 @@
+<launch>
+	<!--<include file="$(find panda_moveit_config)/launch/arm_warnings_test.launch"/> !-->
+
+	<node name="singularity_marker" pkg="arm_warnings" type="singularity_marker" />
+</launch>
