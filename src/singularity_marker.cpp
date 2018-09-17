@@ -1,7 +1,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 //      Title     : singularity_marker.cpp
-//      Project   : vaultbot_nrg
+//      Project   : Teleop IK
 //      Created   : 9/3/18
 //      Author    : Conner Dimoush
 //      Platforms : Ubuntu 64-bit
@@ -50,10 +50,12 @@ arm_warnings::singularity_marker::singularity_marker()
   // Note: MoveGroup doesn't like namespaces, so each instance of this node needs a unique node name
   ros::NodeHandle pn("~");
   pn.param("singularity_threshold", singularity_threshold_, 60.0);
+  pn.param("warning_threshold", warning_threshold_, 40.0);
   pn.getParam("marker_id", marker_id_);
-
-  move_group_name_ = "panda_arm";
   pn.getParam("ee_tf_name", ee_tf_name_);
+  //!!! FOR TESTING PURPOSES I EXPLICITLY DEFINE THE MOVE GROUP NAME, I NEED A CONFIG FILE!!!!!
+  move_group_name_ = "panda_arm";
+  
 
   moveit::planning_interface::MoveGroupInterface move_group(move_group_name_);
 
@@ -72,26 +74,24 @@ arm_warnings::singularity_marker::singularity_marker()
   sin_marker_.action = visualization_msgs::Marker::ADD;
   sin_marker_.header.frame_id = ee_tf_name_;
 
-  sin_marker_.scale.x = 0.5;
-  sin_marker_.scale.y = 0.5;
-  sin_marker_.scale.z = 0.5;
+  sin_marker_.scale.x = 0.4;
+  sin_marker_.scale.y = 0.4;
+  sin_marker_.scale.z = 0.4;
 
-  sin_marker_.color.r = 1.0f;
-  sin_marker_.color.g = 0.0f;
-  sin_marker_.color.b = 0.0f;
-  sin_marker_.color.a = 1.0;
   sin_marker_.lifetime = ros::Duration(0.2);
 
-  sin_marker_.pose.position.x = 0;
-  sin_marker_.pose.position.y = 0;
-  sin_marker_.pose.position.z = 0;
+  //AGAIN NEED YAML for ee_name
+  sin_marker_.header.frame_id = "panda_hand";
+
   sin_marker_.pose.orientation.x = 0.0;
   sin_marker_.pose.orientation.y = 0.0;
   sin_marker_.pose.orientation.z = 0.0;
   sin_marker_.pose.orientation.w = 1.0;
 
   marker_pub_ = n_.advertise<visualization_msgs::Marker>("visualization_marker", 1);
+  //PUBLISHERS ARE USED FOR PROTOTYPING
   condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition", 1);
+  new_condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition_pseudo", 1);
 
   while ( ros::ok() )
   {
@@ -110,7 +110,7 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   const sensor_msgs::JointState group_joints = extractMyJointInfo(msg);
   
   if (group_joints.name.empty()) {
-    ROS_ERROR_STREAM_THROTTLE(2, "Couldn;t figure out the group_joints");
+    ROS_ERROR_STREAM_THROTTLE(2, "no joint group name");
     return;
   }
   
@@ -120,8 +120,8 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   std_msgs::Float32 condition_number;
   condition_number.data = checkConditionNumber(jacobian);
   condition_pub_.publish(condition_number);
-  if (condition_number.data > singularity_threshold_)
-    createMarkers();
+  if (condition_number.data > warning_threshold_)
+    createMarkers(group_joints);
 
 }
 
@@ -152,16 +152,148 @@ Eigen::MatrixXd arm_warnings::singularity_marker::pseudoInverse(const Eigen::Mat
   return J.transpose() * (J * J.transpose()).inverse();
 }
 
-void arm_warnings::singularity_marker::createMarkers()
+void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState group_joints)
 {
-
-  sin_marker_.header.frame_id = "panda_link0";
-  // Indicate the troublesome joint in RViz
+  // Publish general singularity marker in RVIZ
+  sin_marker_.id = 1;
+  sin_marker_.pose.position.x = 0;
+  sin_marker_.pose.position.y = 0;
+  sin_marker_.pose.position.z = 0;
+  sin_marker_.scale.x = 0.15;
+  sin_marker_.scale.y = 0.15;
+  sin_marker_.scale.z = 0.15;
   sin_marker_.color.r = 1.0f;
-  sin_marker_.color.g = 0.5f;
+  sin_marker_.color.g = 0.0f;
   sin_marker_.color.b = 0.0f;
   sin_marker_.color.a = 1.0;
   sin_marker_.header.stamp = ros::Time::now();
   marker_pub_.publish(sin_marker_);
 
+  axesMarkers(group_joints);
+}
+
+void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group_joints)
+{
+  // +/- in along 3D axes
+  int dir [6][3] = 
+  {{1, 0, 0},
+  {-1, 0, 0},
+  {0, 1, 0},
+  {0, -1, 0},
+  {0, 0, 1},
+  {0, 0, -1},
+  };
+  float condition_list [6];
+  //set size of 0.01,
+  float scale = 0.01;
+  //prepare twist to calculate delta_x. no rotation values (yet?)
+  geometry_msgs::TwistStamped twist_cmd;
+  twist_cmd.twist.angular.x = 0;
+  twist_cmd.twist.angular.y = 0;
+  twist_cmd.twist.angular.z = 0;
+
+
+  for (int i = 0; i < 6; i++)
+  {
+    
+    twist_cmd.twist.linear.x = dir[i][0] * scale;
+    twist_cmd.twist.linear.y = dir[i][1] * scale;
+    twist_cmd.twist.linear.z = dir[i][2] * scale;
+    
+    Eigen::MatrixXd jacobian = predictCondition(twist_cmd, group_joints, 3);
+    
+    condition_list[i] = checkConditionNumber(jacobian);
+
+    //std_msgs::Float32 condition_number;
+    //condition_number.data = checkConditionNumber(jacobian);
+    //new_condition_pub_.publish(condition_number);
+
+    sin_marker_.id = i + 2;
+    //sin_marker_.type = visualization_msgs::Marker::MESH_RESOURCE;
+    //sin_marker_.mesh_resource = "package://arm_warnings/meshes/custom_marker.dae";
+
+    sin_marker_.pose.position.x = dir[i][0] * scale * 10;
+    sin_marker_.pose.position.y = dir[i][1] * scale * 10;
+    sin_marker_.pose.position.z = dir[i][2] * scale * 10;
+
+    sin_marker_.scale.x = 0.075;
+    sin_marker_.scale.y = 0.075;
+    sin_marker_.scale.z = 0.075;
+
+    sin_marker_.color.r = 0.0f;
+    sin_marker_.color.g = 0.0f;
+    sin_marker_.color.b = 0.0f;
+    sin_marker_.color.a = 1.0;
+
+    if (condition_list[i] < 30)
+    {
+     sin_marker_.color.g = 1.0f; 
+    }
+    else if (condition_list[i] < 50)
+    {
+      sin_marker_.color.b = 1.0f;
+    }
+    else
+    {
+      sin_marker_.color.r = 1.0f;
+    }
+    
+
+    marker_pub_.publish(sin_marker_);
+  }
+}
+
+
+Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps)
+{
+  const Eigen::VectorXd delta_x = scaleCommand(twist_cmd);
+  for (int i = 0; i < steps; i++)
+  {
+
+    kinematic_state_->setVariableValues(group_joints);
+    Eigen::MatrixXd jacobian = kinematic_state_->getJacobian(joint_model_group_);
+    Eigen::VectorXd delta_theta = pseudoInverse(jacobian) * delta_x;
+
+    for (std::size_t i = 0, size = static_cast<std::size_t>(delta_theta.size()); i < size; ++i)
+    {
+      
+      try
+      {
+        group_joints.position[i] += delta_theta[static_cast<long>(i)];
+      }
+      catch (const std::out_of_range& e)
+      {
+        ROS_ERROR_STREAM_THROTTLE(2, "failed to add delta theta bro");
+      }
+    }
+
+
+  if (twist_cmd.twist.linear.x > 0)
+    {
+      kinematic_state_->setVariableValues(group_joints);
+      Eigen::MatrixXd test_jacobian = kinematic_state_->getJacobian(joint_model_group_);
+
+      std_msgs::Float32 condition_debug;
+      condition_debug.data = checkConditionNumber(test_jacobian);
+      new_condition_pub_.publish(condition_debug);
+    }
+  }
+
+  kinematic_state_->setVariableValues(group_joints);
+  return kinematic_state_->getJacobian(joint_model_group_);
+
+}
+
+Eigen::VectorXd arm_warnings::singularity_marker::scaleCommand(const geometry_msgs::TwistStamped& command) const
+{
+  Eigen::VectorXd result(6);
+
+  result[0] = command.twist.linear.x;
+  result[1] = command.twist.linear.y;
+  result[2] = command.twist.linear.z;
+  result[3] = command.twist.angular.x;
+  result[4] = command.twist.angular.y;
+  result[5] = command.twist.angular.z;
+
+  return result;
 }

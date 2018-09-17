@@ -10,6 +10,9 @@
 #include "sound_play/sound_play.h"
 #include <visualization_msgs/Marker.h>
 #include <std_msgs/Float32.h>
+#include <geometry_msgs/Twist.h>
+#include <tf/tf.h>
+
 
 namespace arm_warnings
 {
@@ -22,14 +25,17 @@ public:
 private:
   void jointStateCB(sensor_msgs::JointStateConstPtr msg);
   double checkConditionNumber(Eigen::MatrixXd& matrix) const;
-  void createMarkers();
+  void createMarkers(sensor_msgs::JointState group_joints);
+  void axesMarkers(sensor_msgs::JointState group_joints);
+  Eigen::MatrixXd predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps);
   Eigen::MatrixXd pseudoInverse(const Eigen::MatrixXd& J) const;
+  Eigen::VectorXd scaleCommand(const geometry_msgs::TwistStamped& command) const;
 
   const sensor_msgs::JointState extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const;
 
 ///////////////////////////////
 
-  double singularity_threshold_, hard_stop_threshold_;
+  double singularity_threshold_, warning_threshold_;
 
   const robot_state::JointModelGroup* joint_model_group_;
 
@@ -47,7 +53,7 @@ private:
 
   visualization_msgs::Marker sin_marker_;
 
-  ros::Publisher marker_pub_, condition_pub_;
+  ros::Publisher marker_pub_, condition_pub_, new_condition_pub_;
 
   int marker_id_;
 
