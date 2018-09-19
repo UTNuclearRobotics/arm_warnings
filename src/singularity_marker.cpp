@@ -44,6 +44,8 @@ int main(int argc, char** argv)
 
 arm_warnings::singularity_marker::singularity_marker()
 {
+  //The 'jointStateCB' callback function is called when new joint states are recieved 
+  //From there current state and future predictions are analyzed
   joint_state_sub_ = n_.subscribe("/joint_states", 1, &singularity_marker::jointStateCB, this);
 
   // Get private parameters
@@ -51,12 +53,11 @@ arm_warnings::singularity_marker::singularity_marker()
   ros::NodeHandle pn("~");
   pn.param("singularity_threshold", singularity_threshold_, 60.0);
   pn.param("warning_threshold", warning_threshold_, 40.0);
-  pn.getParam("marker_id", marker_id_);
+  pn.getParam("move_group_name", move_group_name_);
   pn.getParam("ee_tf_name", ee_tf_name_);
-  //!!! FOR TESTING PURPOSES I EXPLICITLY DEFINE THE MOVE GROUP NAME, I NEED A CONFIG FILE!!!!!
-  move_group_name_ = "panda_arm";
-  
 
+
+  //Set up move_group and MoveIt! requirements
   moveit::planning_interface::MoveGroupInterface move_group(move_group_name_);
 
   robot_model_loader::RobotModelLoader model_loader("robot_description");
@@ -65,11 +66,17 @@ arm_warnings::singularity_marker::singularity_marker()
   joint_model_group_ = kinematic_model->getJointModelGroup(move_group_name_);
   kinematic_state_ = std::make_shared<robot_state::RobotState>(kinematic_model);
 
-  //joint_names_ = move_group_->getJointNames();
   joint_names_ =  joint_model_group_->getVariableNames();
 
-  // This marker indicates the joint that has an error. It's a red sphere
-  sin_marker_.id = marker_id_;
+  // Create the marker for RVIZ. 
+  /* Singularity_Marker currently uses 'sin_marker_' as its only marker so 
+  parameter will be reset and adjusted through out the program. This is ok
+  because each marker displayed has a unique ID. In the future there should
+  be consideration in making multiple custom markers for different aspect
+  of singularity warning, prediction, and teleop aid. The is especially
+  important if custom meshes / different shapes are going to be used. */
+
+  sin_marker_.id = 0;
   sin_marker_.type = visualization_msgs::Marker::SPHERE;
   sin_marker_.action = visualization_msgs::Marker::ADD;
   sin_marker_.header.frame_id = ee_tf_name_;
@@ -80,8 +87,8 @@ arm_warnings::singularity_marker::singularity_marker()
 
   sin_marker_.lifetime = ros::Duration(0.2);
 
-  //AGAIN NEED YAML for ee_name
-  sin_marker_.header.frame_id = "panda_hand";
+  //Since marker will be displayed at EE of arm the frame id is set to the EE transform frame name
+  sin_marker_.header.frame_id = ee_tf_name_;
 
   sin_marker_.pose.orientation.x = 0.0;
   sin_marker_.pose.orientation.y = 0.0;
@@ -89,7 +96,7 @@ arm_warnings::singularity_marker::singularity_marker()
   sin_marker_.pose.orientation.w = 1.0;
 
   marker_pub_ = n_.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-  //PUBLISHERS ARE USED FOR PROTOTYPING
+  //PUBLISHERS ARE USED FOR PROTOTYPING AND TESTING. Consider keeping or make unique message
   condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition", 1);
   new_condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition_pseudo", 1);
 
@@ -102,6 +109,13 @@ arm_warnings::singularity_marker::singularity_marker()
 
 void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConstPtr msg)
 {
+  /* Extract the JOINT STATE
+
+  A series of checks are made first to determine if the joint state is valid.
+  If valid the a jacobian is requested and the condition of the jacobian is
+  calculated. If the condition number exceed the warning_threshold then there
+  will be a request for RVIZ markers. */
+
   // Check that the msg contains joints
   if (msg->name.empty()) {
     ROS_ERROR_STREAM_THROTTLE(2, "JOINT MESSAGE EMPTY");
@@ -114,13 +128,17 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
     return;
   }
   
+  //Get Jacobian
   kinematic_state_->setVariableValues(group_joints);
   Eigen::MatrixXd jacobian = kinematic_state_->getJacobian(joint_model_group_);
 
   std_msgs::Float32 condition_number;
   condition_number.data = checkConditionNumber(jacobian);
   condition_pub_.publish(condition_number);
+
+  //Check if conditions exceeds warning threshold
   if (condition_number.data > warning_threshold_)
+    //create the singularity markers. Functions requires the joint state for further calculation
     createMarkers(group_joints);
 
 }
@@ -155,7 +173,9 @@ Eigen::MatrixXd arm_warnings::singularity_marker::pseudoInverse(const Eigen::Mat
 void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState group_joints)
 {
   // Publish general singularity marker in RVIZ
-  sin_marker_.id = 1;
+  // This is a red sphere centered on end effector
+
+  sin_marker_.id = 0;
   sin_marker_.pose.position.x = 0;
   sin_marker_.pose.position.y = 0;
   sin_marker_.pose.position.z = 0;
@@ -169,6 +189,7 @@ void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState gro
   sin_marker_.header.stamp = ros::Time::now();
   marker_pub_.publish(sin_marker_);
 
+  //create prediction markers along axes
   axesMarkers(group_joints);
 }
 
@@ -184,7 +205,7 @@ void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group
   {0, 0, -1},
   };
   float condition_list [6];
-  //set size of 0.01,
+  //set size of 0.01. This is the size of arm steps used for calculations.
   float scale = 0.01;
   //prepare twist to calculate delta_x. no rotation values (yet?)
   geometry_msgs::TwistStamped twist_cmd;
@@ -192,23 +213,18 @@ void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group
   twist_cmd.twist.angular.y = 0;
   twist_cmd.twist.angular.z = 0;
 
-
+  //Do calculations and create marker for each direction
   for (int i = 0; i < 6; i++)
   {
-    
     twist_cmd.twist.linear.x = dir[i][0] * scale;
     twist_cmd.twist.linear.y = dir[i][1] * scale;
     twist_cmd.twist.linear.z = dir[i][2] * scale;
-    
+    //send desired direction, joint state, and number steps to predictCondition to received jacobian
     Eigen::MatrixXd jacobian = predictCondition(twist_cmd, group_joints, 3);
-    
     condition_list[i] = checkConditionNumber(jacobian);
 
-    //std_msgs::Float32 condition_number;
-    //condition_number.data = checkConditionNumber(jacobian);
-    //new_condition_pub_.publish(condition_number);
-
-    sin_marker_.id = i + 2;
+    sin_marker_.id = i + 1;
+    //Custom marker meshes would go HERE
     //sin_marker_.type = visualization_msgs::Marker::MESH_RESOURCE;
     //sin_marker_.mesh_resource = "package://arm_warnings/meshes/custom_marker.dae";
 
@@ -246,7 +262,19 @@ void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group
 
 Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps)
 {
-  const Eigen::VectorXd delta_x = scaleCommand(twist_cmd);
+  //const Eigen::VectorXd delta_x = scaleCommand(twist_cmd);
+
+  //Turn twist in to the 'delta_x' vector
+  Eigen::VectorXd delta_x(6);
+
+  delta_x[0] = twist_cmd.twist.linear.x;
+  delta_x[1] = twist_cmd.twist.linear.y;
+  delta_x[2] = twist_cmd.twist.linear.z;
+  delta_x[3] = twist_cmd.twist.angular.x;
+  delta_x[4] = twist_cmd.twist.angular.y;
+  delta_x[5] = twist_cmd.twist.angular.z;
+
+  //Do calculations for requested number of steps
   for (int i = 0; i < steps; i++)
   {
 
@@ -254,9 +282,9 @@ Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs
     Eigen::MatrixXd jacobian = kinematic_state_->getJacobian(joint_model_group_);
     Eigen::VectorXd delta_theta = pseudoInverse(jacobian) * delta_x;
 
+    //add delta_theta to the joint_state so calculations can be repeated
     for (std::size_t i = 0, size = static_cast<std::size_t>(delta_theta.size()); i < size; ++i)
     {
-      
       try
       {
         group_joints.position[i] += delta_theta[static_cast<long>(i)];
@@ -267,6 +295,11 @@ Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs
       }
     }
 
+  ///////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////
+
+  // This if statements is used for testing! Returns results for the positive x direction
+  // Trying to determine for the effect of number of steps and step size
 
   if (twist_cmd.twist.linear.x > 0)
     {
@@ -279,21 +312,12 @@ Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs
     }
   }
 
+  /////////////////////////////////////////////////////////////////////
+  /////////////////////////////////////////////////////////////////////
+
+  //Return Jacobian
   kinematic_state_->setVariableValues(group_joints);
   return kinematic_state_->getJacobian(joint_model_group_);
 
 }
 
-Eigen::VectorXd arm_warnings::singularity_marker::scaleCommand(const geometry_msgs::TwistStamped& command) const
-{
-  Eigen::VectorXd result(6);
-
-  result[0] = command.twist.linear.x;
-  result[1] = command.twist.linear.y;
-  result[2] = command.twist.linear.z;
-  result[3] = command.twist.angular.x;
-  result[4] = command.twist.angular.y;
-  result[5] = command.twist.angular.z;
-
-  return result;
-}

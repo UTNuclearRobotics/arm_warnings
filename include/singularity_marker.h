@@ -29,7 +29,6 @@ private:
   void axesMarkers(sensor_msgs::JointState group_joints);
   Eigen::MatrixXd predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps);
   Eigen::MatrixXd pseudoInverse(const Eigen::MatrixXd& J) const;
-  Eigen::VectorXd scaleCommand(const geometry_msgs::TwistStamped& command) const;
 
   const sensor_msgs::JointState extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const;
 
