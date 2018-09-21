@@ -80,20 +80,31 @@ arm_warnings::singularity_marker::singularity_marker()
   sin_marker_.type = visualization_msgs::Marker::SPHERE;
   sin_marker_.action = visualization_msgs::Marker::ADD;
   sin_marker_.header.frame_id = ee_tf_name_;
-
   sin_marker_.scale.x = 0.4;
   sin_marker_.scale.y = 0.4;
   sin_marker_.scale.z = 0.4;
-
   sin_marker_.lifetime = ros::Duration(0.2);
-
   //Since marker will be displayed at EE of arm the frame id is set to the EE transform frame name
   sin_marker_.header.frame_id = ee_tf_name_;
-
   sin_marker_.pose.orientation.x = 0.0;
   sin_marker_.pose.orientation.y = 0.0;
   sin_marker_.pose.orientation.z = 0.0;
   sin_marker_.pose.orientation.w = 1.0;
+
+  // Point toward singularity
+  sin_direction_.id = 47;
+  sin_direction_.type = visualization_msgs::Marker::ARROW;
+  sin_direction_.action = visualization_msgs::Marker::ADD;
+  // TODO: don't hard-code thise
+  sin_direction_.header.frame_id = "panda_link0";
+  sin_direction_.lifetime = ros::Duration(0.2);
+  sin_direction_.scale.x = 0.04;
+  sin_direction_.scale.y = 0.1;
+  sin_direction_.scale.z = 0.1;
+  sin_direction_.color.r = 1.0f;
+  sin_direction_.color.g = 0.0f;
+  sin_direction_.color.b = 0.0f;
+  sin_direction_.color.a = 1.0;
 
   marker_pub_ = n_.advertise<visualization_msgs::Marker>("visualization_marker", 1);
   //PUBLISHERS ARE USED FOR PROTOTYPING AND TESTING. Consider keeping or make unique message
@@ -136,7 +147,47 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   condition_number.data = checkConditionNumber(jacobian);
   condition_pub_.publish(condition_number);
 
+  // Find the direction away from nearest singularity.
+  // The last column of U from the SVD of the Jacobian points away from the singularity
+  Eigen::JacobiSVD<Eigen::MatrixXd> svd(jacobian, Eigen::ComputeThinU);
+  Eigen::VectorXd vector_away_from_singularity = svd.matrixU().col(5);
+  // I'm using this vector to convert an Eigen::Scalar to double. Prob better ways to do it.
+  std::vector<double> vec;
+  vec.push_back(vector_away_from_singularity(0));
+  vec.push_back(vector_away_from_singularity(1));
+  vec.push_back(vector_away_from_singularity(2));
+
+  geometry_msgs::Point start_point;
+  start_point.x=0;
+  start_point.y=0;
+  start_point.z=0;
+  geometry_msgs::Point end_point;
+  end_point.x=vec[0];
+  end_point.y=vec[1];
+  end_point.z=vec[2];
+
+  sin_direction_.points.clear();
+  sin_direction_.points.push_back(start_point);
+  sin_direction_.points.push_back(end_point);
+  sin_direction_.header.stamp = ros::Time::now();
+
+  // Arrow color depends on the sign of the smallest singular value
+  if ( svd.singularValues()(svd.singularValues().size()-1) >= 0 )
+  {
+    sin_direction_.color.r = 1.0f;
+    sin_direction_.color.g = 0.0f;
+    sin_direction_.color.b = 0.0f;
+  }
+  else
+  {
+    sin_direction_.color.r = 0.0f;
+    sin_direction_.color.g = 1.0f;
+    sin_direction_.color.b = 0.0f;  	
+  }
+  marker_pub_.publish(sin_direction_);
+
   //Check if conditions exceeds warning threshold
+  ROS_ERROR_STREAM( condition_number );
   if (condition_number.data > warning_threshold_)
     //create the singularity markers. Functions requires the joint state for further calculation
     createMarkers(group_joints);

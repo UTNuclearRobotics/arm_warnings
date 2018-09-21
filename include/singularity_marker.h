@@ -50,7 +50,7 @@ private:
 
   ros::NodeHandle n_;
 
-  visualization_msgs::Marker sin_marker_;
+  visualization_msgs::Marker sin_marker_, sin_direction_;
 
   ros::Publisher marker_pub_, condition_pub_, new_condition_pub_;
 
