@@ -167,7 +167,7 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   // Plot the eigenvector associated with smallest eigenvalue
   //plotEigenvector(jacobian);
 
-  //Check if conditions exceeds warning threshold
+  //Check if condition exceeds warning threshold
   ROS_ERROR_STREAM( "CN: " << condition_number );
   if (condition_number.data > warning_threshold_)
     //create the singularity markers. Functions requires the joint state for further calculation
@@ -240,7 +240,7 @@ void arm_warnings::singularity_marker::plotEigenvector(const Eigen::MatrixXd &ja
 }
 
 // Plot an arrow along the smallest singular vector (towards singularity)
-void arm_warnings::singularity_marker::plotSVDDirection(const Eigen::MatrixXd &jacobian)
+void arm_warnings::singularity_marker::plotSVDDirection(Eigen::MatrixXd jacobian)
 {
   // Find the direction away from nearest singularity.
   // The last column of U from the SVD of the Jacobian points away from the singularity
@@ -254,6 +254,49 @@ void arm_warnings::singularity_marker::plotSVDDirection(const Eigen::MatrixXd &j
   vec.push_back(vector_away_from_singularity(0));
   vec.push_back(vector_away_from_singularity(1));
   vec.push_back(vector_away_from_singularity(2));
+  vec.push_back(vector_away_from_singularity(3));
+  vec.push_back(vector_away_from_singularity(4));
+  vec.push_back(vector_away_from_singularity(5));
+
+  // This singular vector tends to flip direction unpredictably. See R. Bro, "Resolving the Sign Ambiguity
+  // in the Singular Value Decomposition"
+  // "Look ahead" to see if the Jacobian's condition will decrease in this direction.
+  // First, record the earlier condition number:
+  double prev_condition = checkConditionNumber( jacobian );
+  // scaled version of the singular vector
+  Eigen::VectorXd delta_x(6);
+  double scale = 100;
+  delta_x[0] = vec[0]/scale;
+  delta_x[1] = vec[1]/scale;
+  delta_x[2] = vec[2]/scale;
+  delta_x[3] = vec[3]/scale;
+  delta_x[4] = vec[4]/scale;
+  delta_x[5] = vec[5]/scale;
+
+  // Calculate a small change in joints
+  Eigen::VectorXd delta_theta = pseudoInverse( jacobian ) * delta_x;
+  double theta [6];
+  const double* prev_joints = kinematic_state_->getVariablePositions();
+  for (std::size_t i = 0, size = static_cast<std::size_t>(delta_theta.size()); i < size; ++i)
+  {
+    try
+    {
+      theta[i] = prev_joints[i]+delta_theta(i);
+    }
+    catch (const std::out_of_range& e)
+    {
+      ROS_ERROR_STREAM(" Lengths of output and increments do not match.");
+    }
+  }
+
+  kinematic_state_->setVariablePositions( theta );
+  jacobian = kinematic_state_->getJacobian(joint_model_group_);
+  double new_condition = checkConditionNumber( jacobian );
+
+  // If new_condition < prev_condition, the singular vector does point towards a singularity.
+  //  Otherwise, flip its direction.
+  if ( prev_condition >= new_condition )
+    std::transform(vec.cbegin(),vec.cend(),vec.begin(),std::negate<double>());
 
   // start pt = all zeros
   geometry_msgs::Point start_point;

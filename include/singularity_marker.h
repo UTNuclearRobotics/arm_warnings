@@ -32,7 +32,7 @@ private:
 
   // Plot an arrow along the smallest eigenvector (towards singularity).
   // By smallest eigenvector, I mean the one associated with smallest eigenvalue.
-  void plotSVDDirection(const Eigen::MatrixXd &jacobian);
+  void plotSVDDirection(Eigen::MatrixXd jacobian);
 
   // Plot an arrow along the smallest eigenvector (towards singularity)
   void plotEigenvector(const Eigen::MatrixXd &jacobian);
