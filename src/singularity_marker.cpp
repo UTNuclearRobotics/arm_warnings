@@ -165,7 +165,7 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   // Plot an arrow along the smallest singular vector (towards singularity)
   plotSVDDirection(jacobian);
   // Plot the eigenvector associated with smallest eigenvalue
-  plotEigenvector(jacobian);
+  //plotEigenvector(jacobian);
 
   //Check if conditions exceeds warning threshold
   ROS_ERROR_STREAM( "CN: " << condition_number );
@@ -196,7 +196,6 @@ void arm_warnings::singularity_marker::plotEigenvector(const Eigen::MatrixXd &ja
   // Find the index of smallest magnitude
   const int N = sizeof(col_mags) / sizeof(double);
   const int smallest_col_index = std::min_element(col_mags.begin(), col_mags.end())-col_mags.begin();
-  ROS_INFO_STREAM( smallest_col_index );
 
   // Recreate a new matrix, minus this column
   Eigen::MatrixXd trimmed_jacobian(6,6);
@@ -214,7 +213,6 @@ void arm_warnings::singularity_marker::plotEigenvector(const Eigen::MatrixXd &ja
   Eigen::EigenSolver<Eigen::MatrixXd> eigen_solver(trimmed_jacobian);
   // Real components only
   Eigen::VectorXd eigenvector = eigen_solver.eigenvectors().col(5).real();
-  ROS_INFO_STREAM( eigen_solver.eigenvectors().col(5).real() );
 
   //////////////////
   // Plot the vector
@@ -249,7 +247,7 @@ void arm_warnings::singularity_marker::plotSVDDirection(const Eigen::MatrixXd &j
   Eigen::JacobiSVD<Eigen::MatrixXd> svd(jacobian, Eigen::ComputeThinU);
   Eigen::VectorXd vector_away_from_singularity = svd.matrixU().col(5);
   svd = Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinV);
-  ROS_WARN_STREAM( svd.matrixV().col(5) );
+  //ROS_WARN_STREAM( svd.matrixV().col(5) );
 
   // I'm using this vector to convert an Eigen::Scalar to double. Prob better ways to do it.
   std::vector<double> vec;
