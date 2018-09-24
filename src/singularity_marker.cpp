@@ -95,7 +95,7 @@ arm_warnings::singularity_marker::singularity_marker()
   sin_direction_.id = 47;
   sin_direction_.type = visualization_msgs::Marker::ARROW;
   sin_direction_.action = visualization_msgs::Marker::ADD;
-  // TODO: don't hard-code thise
+  // TODO: don't hard-code this
   sin_direction_.header.frame_id = "panda_link0";
   sin_direction_.lifetime = ros::Duration(0.2);
   sin_direction_.scale.x = 0.04;
@@ -105,6 +105,21 @@ arm_warnings::singularity_marker::singularity_marker()
   sin_direction_.color.g = 0.0f;
   sin_direction_.color.b = 0.0f;
   sin_direction_.color.a = 1.0;
+
+  // Point toward singularity
+  eigenvector_.id = 48;
+  eigenvector_.type = visualization_msgs::Marker::ARROW;
+  eigenvector_.action = visualization_msgs::Marker::ADD;
+  // TODO: don't hard-code this
+  eigenvector_.header.frame_id = "panda_link0";
+  eigenvector_.lifetime = ros::Duration(0.2);
+  eigenvector_.scale.x = 0.04;
+  eigenvector_.scale.y = 0.1;
+  eigenvector_.scale.z = 0.1;
+  eigenvector_.color.r = 0.0f;
+  eigenvector_.color.g = 1.0f;
+  eigenvector_.color.b = 0.0f;
+  eigenvector_.color.a = 1.0;
 
   marker_pub_ = n_.advertise<visualization_msgs::Marker>("visualization_marker", 1);
   //PUBLISHERS ARE USED FOR PROTOTYPING AND TESTING. Consider keeping or make unique message
@@ -147,20 +162,103 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   condition_number.data = checkConditionNumber(jacobian);
   condition_pub_.publish(condition_number);
 
+  // Plot an arrow along the smallest singular vector (towards singularity)
+  plotSVDDirection(jacobian);
+  // Plot the eigenvector associated with smallest eigenvalue
+  plotEigenvector(jacobian);
+
+  //Check if conditions exceeds warning threshold
+  ROS_ERROR_STREAM( "CN: " << condition_number );
+  if (condition_number.data > warning_threshold_)
+    //create the singularity markers. Functions requires the joint state for further calculation
+    createMarkers(group_joints);
+}
+
+// Plot an arrow along the smallest eigenvector (towards singularity).
+// By smallest eigenvector, I mean the one associated with smallest eigenvalue.
+void arm_warnings::singularity_marker::plotEigenvector(const Eigen::MatrixXd &jacobian)
+{
+  //////////////////////////////////////////////
+  // Need to trim the matrix down to 6x6.
+  // Eliminate the column of smallest magnitude.
+  //////////////////////////////////////////////
+  std::vector<double> col_mags;
+
+  for (int i=0; i<jacobian.cols(); ++i)
+  {
+    double magnitude = 0;
+    for (int j=0; j<jacobian.rows(); ++j)
+    {
+      magnitude += jacobian(j,i)*jacobian(j,i);
+    }
+    col_mags.push_back( pow(magnitude,0.5) );
+  }
+  // Find the index of smallest magnitude
+  const int N = sizeof(col_mags) / sizeof(double);
+  const int smallest_col_index = std::min_element(col_mags.begin(), col_mags.end())-col_mags.begin();
+  ROS_INFO_STREAM( smallest_col_index );
+
+  // Recreate a new matrix, minus this column
+  Eigen::MatrixXd trimmed_jacobian(6,6);
+  for ( int i=0; i<6; ++i )
+    if ( i != smallest_col_index )
+      trimmed_jacobian.col(i) = jacobian.col(i);
+    else
+      break;
+  for ( int i=smallest_col_index; i<6; ++i)
+    trimmed_jacobian.col(i) = jacobian.col(i);
+
+  ///////////////////////////////////////////////////////
+  // Calculate vector associated with smallest eigenvalue
+  ///////////////////////////////////////////////////////
+  Eigen::EigenSolver<Eigen::MatrixXd> eigen_solver(trimmed_jacobian);
+  // Real components only
+  Eigen::VectorXd eigenvector = eigen_solver.eigenvectors().col(5).real();
+  ROS_INFO_STREAM( eigen_solver.eigenvectors().col(5).real() );
+
+  //////////////////
+  // Plot the vector
+  //////////////////
+  // I'm using this vector to convert an Eigen::Scalar to double. Prob better ways to do it.
+  std::vector<double> vec;
+  vec.push_back(eigenvector(0));
+  vec.push_back(eigenvector(1));
+  vec.push_back(eigenvector(2));
+
+  // start pt = all zeros
+  geometry_msgs::Point start_point;
+  geometry_msgs::Point end_point;
+  end_point.x=eigenvector[0];
+  end_point.y=eigenvector[1];
+  end_point.z=eigenvector[2];
+
+  eigenvector_.points.clear();
+  eigenvector_.points.push_back(start_point);
+  eigenvector_.points.push_back(end_point);
+  eigenvector_.header.stamp = ros::Time::now();
+
+  marker_pub_.publish(eigenvector_);   
+
+}
+
+// Plot an arrow along the smallest singular vector (towards singularity)
+void arm_warnings::singularity_marker::plotSVDDirection(const Eigen::MatrixXd &jacobian)
+{
   // Find the direction away from nearest singularity.
   // The last column of U from the SVD of the Jacobian points away from the singularity
   Eigen::JacobiSVD<Eigen::MatrixXd> svd(jacobian, Eigen::ComputeThinU);
   Eigen::VectorXd vector_away_from_singularity = svd.matrixU().col(5);
+  svd = Eigen::JacobiSVD<Eigen::MatrixXd>(jacobian, Eigen::ComputeThinV);
+  ROS_WARN_STREAM( svd.matrixV().col(5) );
+
   // I'm using this vector to convert an Eigen::Scalar to double. Prob better ways to do it.
   std::vector<double> vec;
   vec.push_back(vector_away_from_singularity(0));
   vec.push_back(vector_away_from_singularity(1));
   vec.push_back(vector_away_from_singularity(2));
 
+  // start pt = all zeros
   geometry_msgs::Point start_point;
-  start_point.x=0;
-  start_point.y=0;
-  start_point.z=0;
   geometry_msgs::Point end_point;
   end_point.x=vec[0];
   end_point.y=vec[1];
@@ -171,27 +269,7 @@ void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConst
   sin_direction_.points.push_back(end_point);
   sin_direction_.header.stamp = ros::Time::now();
 
-  // Arrow color depends on the sign of the smallest singular value
-  if ( svd.singularValues()(svd.singularValues().size()-1) >= 0 )
-  {
-    sin_direction_.color.r = 1.0f;
-    sin_direction_.color.g = 0.0f;
-    sin_direction_.color.b = 0.0f;
-  }
-  else
-  {
-    sin_direction_.color.r = 0.0f;
-    sin_direction_.color.g = 1.0f;
-    sin_direction_.color.b = 0.0f;  	
-  }
-  marker_pub_.publish(sin_direction_);
-
-  //Check if conditions exceeds warning threshold
-  ROS_ERROR_STREAM( condition_number );
-  if (condition_number.data > warning_threshold_)
-    //create the singularity markers. Functions requires the joint state for further calculation
-    createMarkers(group_joints);
-
+  marker_pub_.publish(sin_direction_); 
 }
 
 const sensor_msgs::JointState arm_warnings::singularity_marker::extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const

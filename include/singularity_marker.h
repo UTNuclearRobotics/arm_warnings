@@ -30,6 +30,13 @@ private:
   Eigen::MatrixXd predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps);
   Eigen::MatrixXd pseudoInverse(const Eigen::MatrixXd& J) const;
 
+  // Plot an arrow along the smallest eigenvector (towards singularity).
+  // By smallest eigenvector, I mean the one associated with smallest eigenvalue.
+  void plotSVDDirection(const Eigen::MatrixXd &jacobian);
+
+  // Plot an arrow along the smallest eigenvector (towards singularity)
+  void plotEigenvector(const Eigen::MatrixXd &jacobian);
+
   const sensor_msgs::JointState extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const;
 
 ///////////////////////////////
@@ -44,13 +51,11 @@ private:
 
   robot_state::RobotStatePtr kinematic_state_;
 
-  //moveit::planning_interface::MoveGroupInterface move_group_;
-
   std::string move_group_name_;
 
   ros::NodeHandle n_;
 
-  visualization_msgs::Marker sin_marker_, sin_direction_;
+  visualization_msgs::Marker sin_marker_, sin_direction_, eigenvector_;
 
   ros::Publisher marker_pub_, condition_pub_, new_condition_pub_;
 
