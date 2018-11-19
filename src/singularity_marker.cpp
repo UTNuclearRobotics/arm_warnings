@@ -68,15 +68,87 @@ arm_warnings::singularity_marker::singularity_marker()
 
   joint_names_ =  joint_model_group_->getVariableNames();
 
-  // Create the marker for RVIZ. 
-  /* Singularity_Marker currently uses 'sin_marker_' as its only marker so 
-  parameter will be reset and adjusted through out the program. This is ok
-  because each marker displayed has a unique ID. In the future there should
-  be consideration in making multiple custom markers for different aspect
-  of singularity warning, prediction, and teleop aid. The is especially
-  important if custom meshes / different shapes are going to be used. */
+  //Define RVIZ Markers
+  defineMarkers();
+  //Marker Publisher, the single publisher for all RVIZ markers
+  marker_pub_ = n_.advertise<visualization_msgs::Marker>("visualization_marker", 1);
+  
+  //PUBLISHERS ARE USED FOR PROTOTYPING AND TESTING. Consider keeping or make unique message
+  condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition", 1);
+  new_condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition_pseudo", 1);
 
-  sin_marker_.id = 0;
+  while ( ros::ok() )
+  {
+    ros::spinOnce();
+    ros::Duration(0.1).sleep();
+  }
+}
+
+void arm_warnings::singularity_marker::defineMarkers()
+{
+  //Define all marker objects here
+  // Create the marker for RVIZ. 
+  
+  //NOTE: All Markers share a common ID marker_id_ will be used to keep track of this
+  marker_id_ = 0;
+
+  //END EFFECTOR MARKER - Shows current condition
+  ee_marker_.id = marker_id_;
+  ee_marker_.type = visualization_msgs::Marker::SPHERE;
+  ee_marker_.action = visualization_msgs::Marker::ADD;
+  ee_marker_.header.frame_id = ee_tf_name_;
+  ee_marker_.scale.x = 0.1;
+  ee_marker_.scale.y = 0.1;
+  ee_marker_.scale.z = 0.1;
+  ee_marker_.lifetime = ros::Duration(0.2);
+  //Since marker will be displayed at EE of arm the frame id is set to the EE transform frame name
+  ee_marker_.header.frame_id = ee_tf_name_;
+  ee_marker_.pose.orientation.x = 0.0;
+  ee_marker_.pose.orientation.y = 0.0;
+  ee_marker_.pose.orientation.z = 0.0;
+  ee_marker_.pose.orientation.w = 1.0;
+  ee_marker_.color.r = 1.0f;
+  ee_marker_.color.g = 0.0f;
+  ee_marker_.color.b = 0.0f;
+  ee_marker_.color.a = 1.0;
+  marker_id_ ++;
+
+  //SINGULARITY DIRECTION
+  // Point toward singularity
+  sin_direction_.id = marker_id_;
+  sin_direction_.type = visualization_msgs::Marker::ARROW;
+  sin_direction_.action = visualization_msgs::Marker::ADD;
+  // TODO: don't hard-code this
+  sin_direction_.header.frame_id = "panda_link0";
+  sin_direction_.lifetime = ros::Duration(0.2);
+  sin_direction_.scale.x = 0.04;
+  sin_direction_.scale.y = 0.1;
+  sin_direction_.scale.z = 0.1;
+  sin_direction_.color.r = 1.0f;
+  sin_direction_.color.g = 0.0f;
+  sin_direction_.color.b = 0.0f;
+  sin_direction_.color.a = 1.0;
+  marker_id_ ++;
+
+  //EIGENVECTOR
+  // Point toward singularity
+  eigenvector_.id = marker_id_;
+  eigenvector_.type = visualization_msgs::Marker::ARROW;
+  eigenvector_.action = visualization_msgs::Marker::ADD;
+  // TODO: don't hard-code this
+  eigenvector_.header.frame_id = "panda_link0";
+  eigenvector_.lifetime = ros::Duration(0.2);
+  eigenvector_.scale.x = 0.04;
+  eigenvector_.scale.y = 0.1;
+  eigenvector_.scale.z = 0.1;
+  eigenvector_.color.r = 0.0f;
+  eigenvector_.color.g = 1.0f;
+  eigenvector_.color.b = 0.0f;
+  eigenvector_.color.a = 1.0;
+  marker_id_ ++;
+
+  //SINGULARITY MARKER - Predict conditions as future positions
+  sin_marker_.id = marker_id_;
   sin_marker_.type = visualization_msgs::Marker::SPHERE;
   sin_marker_.action = visualization_msgs::Marker::ADD;
   sin_marker_.header.frame_id = ee_tf_name_;
@@ -91,48 +163,7 @@ arm_warnings::singularity_marker::singularity_marker()
   sin_marker_.pose.orientation.z = 0.0;
   sin_marker_.pose.orientation.w = 1.0;
 
-  // Point toward singularity
-  sin_direction_.id = 47;
-  sin_direction_.type = visualization_msgs::Marker::ARROW;
-  sin_direction_.action = visualization_msgs::Marker::ADD;
-  // TODO: don't hard-code this
-  sin_direction_.header.frame_id = "panda_link0";
-  sin_direction_.lifetime = ros::Duration(0.2);
-  sin_direction_.scale.x = 0.04;
-  sin_direction_.scale.y = 0.1;
-  sin_direction_.scale.z = 0.1;
-  sin_direction_.color.r = 1.0f;
-  sin_direction_.color.g = 0.0f;
-  sin_direction_.color.b = 0.0f;
-  sin_direction_.color.a = 1.0;
-
-  // Point toward singularity
-  eigenvector_.id = 48;
-  eigenvector_.type = visualization_msgs::Marker::ARROW;
-  eigenvector_.action = visualization_msgs::Marker::ADD;
-  // TODO: don't hard-code this
-  eigenvector_.header.frame_id = "panda_link0";
-  eigenvector_.lifetime = ros::Duration(0.2);
-  eigenvector_.scale.x = 0.04;
-  eigenvector_.scale.y = 0.1;
-  eigenvector_.scale.z = 0.1;
-  eigenvector_.color.r = 0.0f;
-  eigenvector_.color.g = 1.0f;
-  eigenvector_.color.b = 0.0f;
-  eigenvector_.color.a = 1.0;
-
-  marker_pub_ = n_.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-  //PUBLISHERS ARE USED FOR PROTOTYPING AND TESTING. Consider keeping or make unique message
-  condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition", 1);
-  new_condition_pub_ = n_.advertise<std_msgs::Float32>("arm_condition_pseudo", 1);
-
-  while ( ros::ok() )
-  {
-    ros::spinOnce();
-    ros::Duration(0.1).sleep();
-  }
 }
-
 void arm_warnings::singularity_marker::jointStateCB(sensor_msgs::JointStateConstPtr msg)
 {
   /* Extract the JOINT STATE
@@ -342,29 +373,14 @@ Eigen::MatrixXd arm_warnings::singularity_marker::pseudoInverse(const Eigen::Mat
 
 void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState group_joints)
 {
-  // Publish general singularity marker in RVIZ
+  // Publish ee_marker_ in RVIZ
   // This is a red sphere centered on end effector
+  ee_marker_.header.stamp = ros::Time::now();
+  marker_pub_.publish(ee_marker_);
 
-  sin_marker_.id = 0;
-  sin_marker_.pose.position.x = 0;
-  sin_marker_.pose.position.y = 0;
-  sin_marker_.pose.position.z = 0;
-  sin_marker_.scale.x = 0.15;
-  sin_marker_.scale.y = 0.15;
-  sin_marker_.scale.z = 0.15;
-  sin_marker_.color.r = 1.0f;
-  sin_marker_.color.g = 0.0f;
-  sin_marker_.color.b = 0.0f;
-  sin_marker_.color.a = 1.0;
-  sin_marker_.header.stamp = ros::Time::now();
-  marker_pub_.publish(sin_marker_);
-
-  //create prediction markers along axes
-  axesMarkers(group_joints);
-}
-
-void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group_joints)
-{
+  //CREATE THE SINGULARITY MARKERS
+  //reset id
+  marker_id_ = 3;
   // +/- in along 3D axes
   int dir [6][3] = 
   {{1, 0, 0},
@@ -374,9 +390,9 @@ void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group
   {0, 0, 1},
   {0, 0, -1},
   };
-  float condition_list [6];
   //set size of 0.01. This is the size of arm steps used for calculations.
   float scale = 0.01;
+  float steps = 5;
   //prepare twist to calculate delta_x. no rotation values (yet?)
   geometry_msgs::TwistStamped twist_cmd;
   twist_cmd.twist.angular.x = 0;
@@ -390,17 +406,23 @@ void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group
     twist_cmd.twist.linear.y = dir[i][1] * scale;
     twist_cmd.twist.linear.z = dir[i][2] * scale;
     //send desired direction, joint state, and number steps to predictCondition to received jacobian
-    Eigen::MatrixXd jacobian = predictCondition(twist_cmd, group_joints, 3);
-    condition_list[i] = checkConditionNumber(jacobian);
+    Eigen::MatrixXd jacobian = predictCondition(twist_cmd, group_joints, steps);
+    double c = checkConditionNumber(jacobian);
+    //Normalize Condition Numbers btw 0/1 with data range being (warn/2)/singularity_thresh
+    if (c > singularity_threshold_)
+    {
+      c = singularity_threshold_;
+    }
+    c = (c - warning_threshold_ / 2)/ (singularity_threshold_ - warning_threshold_ / 2);
 
-    sin_marker_.id = i + 1;
+    sin_marker_.id = marker_id_ + i;
     //Custom marker meshes would go HERE
     //sin_marker_.type = visualization_msgs::Marker::MESH_RESOURCE;
     //sin_marker_.mesh_resource = "package://arm_warnings/meshes/custom_marker.dae";
 
-    sin_marker_.pose.position.x = dir[i][0] * scale * 10;
-    sin_marker_.pose.position.y = dir[i][1] * scale * 10;
-    sin_marker_.pose.position.z = dir[i][2] * scale * 10;
+    sin_marker_.pose.position.x = dir[i][0] * scale * steps * 2;
+    sin_marker_.pose.position.y = dir[i][1] * scale * steps * 2;
+    sin_marker_.pose.position.z = dir[i][2] * scale * steps * 2;
 
     sin_marker_.scale.x = 0.075;
     sin_marker_.scale.y = 0.075;
@@ -411,24 +433,27 @@ void arm_warnings::singularity_marker::axesMarkers(sensor_msgs::JointState group
     sin_marker_.color.b = 0.0f;
     sin_marker_.color.a = 1.0;
 
-    if (condition_list[i] < 30)
+    //COLORMAP 
+    //Green -> Red
+    double r = 0;
+    double g = 0;
+    if (c > 0.5)
     {
-     sin_marker_.color.g = 1.0f; 
-    }
-    else if (condition_list[i] < 50)
-    {
-      sin_marker_.color.b = 1.0f;
+      r = 1;
+      g = (1 - c)/(0.5);
     }
     else
     {
-      sin_marker_.color.r = 1.0f;
+      r = c / 0.5;
+      g = 1;
     }
-    
+
+    sin_marker_.color.r = r;
+    sin_marker_.color.g = g;
 
     marker_pub_.publish(sin_marker_);
   }
 }
-
 
 Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps)
 {

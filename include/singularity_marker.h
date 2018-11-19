@@ -25,8 +25,8 @@ public:
 private:
   void jointStateCB(sensor_msgs::JointStateConstPtr msg);
   double checkConditionNumber(Eigen::MatrixXd& matrix) const;
+  void defineMarkers();
   void createMarkers(sensor_msgs::JointState group_joints);
-  void axesMarkers(sensor_msgs::JointState group_joints);
   Eigen::MatrixXd predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps);
   Eigen::MatrixXd pseudoInverse(const Eigen::MatrixXd& J) const;
 
@@ -39,7 +39,7 @@ private:
 
   const sensor_msgs::JointState extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const;
 
-///////////////////////////////
+  ///////////////////////////////
 
   double singularity_threshold_, warning_threshold_;
 
@@ -55,7 +55,7 @@ private:
 
   ros::NodeHandle n_;
 
-  visualization_msgs::Marker sin_marker_, sin_direction_, eigenvector_;
+  visualization_msgs::Marker sin_marker_, ee_marker_, sin_direction_, eigenvector_;
 
   ros::Publisher marker_pub_, condition_pub_, new_condition_pub_;
 
