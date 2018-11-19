@@ -1,5 +1,5 @@
 <launch>
-	<!--<include file="$(find panda_moveit_config)/launch/arm_warnings_test.launch"/> !-->
+	<include file="$(find arm_warnings)/launch/arm_warnings_test.launch"/>
 
 	<node name="singularity_marker" pkg="arm_warnings" type="singularity_marker" output="screen">
 		<rosparam command="load" file="$(find arm_warnings)/config/panda_sim.yaml"/>

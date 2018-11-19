@@ -46,7 +46,7 @@
 
   <!-- Run Rviz -->
 
-  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find panda_moveit_config)/launch/arm_warnings.rviz" />" />
+  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find arm_warnings)/config/arm_warnings.rviz" />" />
 
 
 
