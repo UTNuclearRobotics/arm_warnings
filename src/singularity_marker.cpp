@@ -56,9 +56,13 @@ arm_warnings::singularity_marker::singularity_marker()
   pn.getParam("move_group_name", move_group_name_);
   pn.getParam("ee_tf_name", ee_tf_name_);
 
+  //Make a Param
+  recursion_depth_ = 5;
+
 
   //Set up move_group and MoveIt! requirements
   moveit::planning_interface::MoveGroupInterface move_group(move_group_name_);
+  ROS_ERROR_STREAM(move_group.getPlanningFrame());
 
   robot_model_loader::RobotModelLoader model_loader("robot_description");
   robot_model::RobotModelPtr kinematic_model = model_loader.getModel();
@@ -379,6 +383,8 @@ void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState gro
   marker_pub_.publish(ee_marker_);
 
   //CREATE THE SINGULARITY MARKERS
+  ///////////////////////////////////////////////////////
+
   //reset id
   marker_id_ = 3;
   // +/- in along 3D axes
@@ -392,7 +398,8 @@ void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState gro
   };
   //set size of 0.01. This is the size of arm steps used for calculations.
   float scale = 0.01;
-  float steps = 5;
+  int steps = 5;
+
   //prepare twist to calculate delta_x. no rotation values (yet?)
   geometry_msgs::TwistStamped twist_cmd;
   twist_cmd.twist.angular.x = 0;
@@ -406,58 +413,12 @@ void arm_warnings::singularity_marker::createMarkers(sensor_msgs::JointState gro
     twist_cmd.twist.linear.y = dir[i][1] * scale;
     twist_cmd.twist.linear.z = dir[i][2] * scale;
     //send desired direction, joint state, and number steps to predictCondition to received jacobian
-    Eigen::MatrixXd jacobian = predictCondition(twist_cmd, group_joints, steps);
-    double c = checkConditionNumber(jacobian);
-    //Normalize Condition Numbers btw 0/1 with data range being (warn/2)/singularity_thresh
-    if (c > singularity_threshold_)
-    {
-      c = singularity_threshold_;
-    }
-    c = (c - warning_threshold_ / 2)/ (singularity_threshold_ - warning_threshold_ / 2);
-
-    sin_marker_.id = marker_id_ + i;
-    //Custom marker meshes would go HERE
-    //sin_marker_.type = visualization_msgs::Marker::MESH_RESOURCE;
-    //sin_marker_.mesh_resource = "package://arm_warnings/meshes/custom_marker.dae";
-
-    sin_marker_.pose.position.x = dir[i][0] * scale * steps * 2;
-    sin_marker_.pose.position.y = dir[i][1] * scale * steps * 2;
-    sin_marker_.pose.position.z = dir[i][2] * scale * steps * 2;
-
-    sin_marker_.scale.x = 0.075;
-    sin_marker_.scale.y = 0.075;
-    sin_marker_.scale.z = 0.075;
-
-    sin_marker_.color.r = 0.0f;
-    sin_marker_.color.g = 0.0f;
-    sin_marker_.color.b = 0.0f;
-    sin_marker_.color.a = 1.0;
-
-    //COLORMAP 
-    //Green -> Red
-    double r = 0;
-    double g = 0;
-    if (c > 0.5)
-    {
-      r = 1;
-      g = (1 - c)/(0.5);
-    }
-    else
-    {
-      r = c / 0.5;
-      g = 1;
-    }
-
-    sin_marker_.color.r = r;
-    sin_marker_.color.g = g;
-
-    marker_pub_.publish(sin_marker_);
+    predictCondition(twist_cmd, group_joints, steps, recursion_depth_);
   }
 }
 
-Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps)
+void arm_warnings::singularity_marker::predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps, int depth)
 {
-  //const Eigen::VectorXd delta_x = scaleCommand(twist_cmd);
 
   //Turn twist in to the 'delta_x' vector
   Eigen::VectorXd delta_x(6);
@@ -470,7 +431,7 @@ Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs
   delta_x[5] = twist_cmd.twist.angular.z;
 
   //Do calculations for requested number of steps
-  for (int i = 0; i < steps; i++)
+  for (int i = 0; i < steps; ++i)
   {
 
     kinematic_state_->setVariableValues(group_joints);
@@ -489,30 +450,111 @@ Eigen::MatrixXd arm_warnings::singularity_marker::predictCondition(geometry_msgs
         ROS_ERROR_STREAM_THROTTLE(2, "failed to add delta theta bro");
       }
     }
-
-  ///////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////////////////////////////////////////
-
-  // This if statements is used for testing! Returns results for the positive x direction
-  // Trying to determine for the effect of number of steps and step size
-
-  if (twist_cmd.twist.linear.x > 0)
-    {
-      kinematic_state_->setVariableValues(group_joints);
-      Eigen::MatrixXd test_jacobian = kinematic_state_->getJacobian(joint_model_group_);
-
-      std_msgs::Float32 condition_debug;
-      condition_debug.data = checkConditionNumber(test_jacobian);
-      new_condition_pub_.publish(condition_debug);
-    }
   }
 
-  /////////////////////////////////////////////////////////////////////
-  /////////////////////////////////////////////////////////////////////
-
-  //Return Jacobian
   kinematic_state_->setVariableValues(group_joints);
-  return kinematic_state_->getJacobian(joint_model_group_);
+  Eigen::MatrixXd j = kinematic_state_->getJacobian(joint_model_group_);
+  double c = checkConditionNumber(j);
 
+  if (c > singularity_threshold_)
+  {
+    c = singularity_threshold_;
+  }
+  c = (c - warning_threshold_ / 2)/ (singularity_threshold_ - warning_threshold_ / 2);
+
+
+  sin_marker_.id = marker_id_;
+  marker_id_ ++;
+
+  sin_marker_.pose.position.x = delta_x[0] * 7 * (recursion_depth_ - depth + 1);
+  sin_marker_.pose.position.y = delta_x[1] * 7 * (recursion_depth_ - depth + 1);
+  sin_marker_.pose.position.z = delta_x[2] * 7 * (recursion_depth_ - depth + 1);
+
+  sin_marker_.scale.x = 0.02 * depth;
+  sin_marker_.scale.y = 0.02 * depth;
+  sin_marker_.scale.z = 0.02 * depth;
+
+  sin_marker_.color.r = 0.0f;
+  sin_marker_.color.g = 0.0f;
+  sin_marker_.color.b = 0.0f;
+  sin_marker_.color.a = 1.0;
+
+  //COLORMAP 
+  //Green -> Red
+  double r = 0;
+  double g = 0;
+  if (c > 0.5)
+  {
+    r = 1;
+    g = (1 - c)/(0.5);
+  }
+  else
+  {
+    r = c / 0.5;
+    g = 1;
+  }
+
+  sin_marker_.color.r = r;
+  sin_marker_.color.g = g;
+
+  marker_pub_.publish(sin_marker_);
+
+  depth --;
+  if (depth != 0)
+  {
+    /*
+    //Sub Direcetions
+    float scale = 0.01;
+    int max = 0; //get index of primary direction
+    //MAX is X
+    if (twist_cmd.twist.linear.x > twist_cmd.twist.linear.y && twist_cmd.twist.linear.x > twist_cmd.twist.linear.z)
+      max = 0;
+    //MAX is Y
+    else if (twist_cmd.twist.linear.y > twist_cmd.twist.linear.x && twist_cmd.twist.linear.y > twist_cmd.twist.linear.z)
+      max = 1;
+    //MAX is Z
+    else
+      max = 2;
+
+    //Build set of Sub Directions around primary direction
+    double sub_dir [4][3]; 
+    for (int i = 0; i < 2; i++)
+    {
+      //shrink primary direction magnitude
+      sub_dir[i][max] = cos(M_PI/12) * scale;
+      sub_dir[i+2][max] = cos(M_PI/12) * scale;
+      //add +/- for 2 sub directions
+      if (max == 0)
+      {
+        sub_dir[i][1] = sin(M_PI/12) * scale * pow(-1,i+1);
+        sub_dir[i+2][2] = sin(M_PI/12) * scale * pow(-1,i+1);
+      }
+      else if (max == 1)
+      {
+        sub_dir[i][0] = sin(M_PI/12) * scale * pow(-1,i+1);
+        sub_dir[i+2][2] = sin(M_PI/12) * scale * pow(-1,i+1);
+      }
+      else
+      {
+        sub_dir[i][0] = sin(M_PI/12) * scale * pow(-1,i+1);
+        sub_dir[i+2][1] = sin(M_PI/12) * scale * -pow(-1,i+1);
+      }
+    }
+    //Create Twist for Sub Direction
+    geometry_msgs::TwistStamped twist_sub;
+    twist_sub.twist.angular.x = 0;
+    twist_sub.twist.angular.y = 0;
+    twist_sub.twist.angular.z = 0;
+    //Fill and send twist for each sub direction
+    for (int i = 0; i < 4; i++)
+    {
+      twist_sub.twist.linear.x = sub_dir[i][0];
+      twist_sub.twist.linear.y = sub_dir[i][1];
+      twist_sub.twist.linear.z = sub_dir[i][2];
+      predictCondition(twist_sub, group_joints, steps, depth);
+    }
+    */
+    predictCondition(twist_cmd, group_joints, steps, depth);
+  }
 }
 

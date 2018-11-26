@@ -27,7 +27,7 @@ private:
   double checkConditionNumber(Eigen::MatrixXd& matrix) const;
   void defineMarkers();
   void createMarkers(sensor_msgs::JointState group_joints);
-  Eigen::MatrixXd predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps);
+  void predictCondition(geometry_msgs::TwistStamped twist_cmd, sensor_msgs::JointState group_joints, int steps, int depth);
   Eigen::MatrixXd pseudoInverse(const Eigen::MatrixXd& J) const;
 
   // Plot an arrow along the smallest eigenvector (towards singularity).
@@ -59,7 +59,7 @@ private:
 
   ros::Publisher marker_pub_, condition_pub_, new_condition_pub_;
 
-  int marker_id_;
+  int marker_id_, recursion_depth_;
 
   std::string ee_tf_name_;
 };

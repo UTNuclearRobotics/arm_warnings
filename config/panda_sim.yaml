@@ -1,4 +1,4 @@
 singularity_threshold: 60
 warning_threshold: 40
-ee_tf_name: 'panda_hand'
+ee_tf_name: 'panda_link0'
 move_group_name: 'panda_arm'
