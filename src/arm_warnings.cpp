@@ -50,7 +50,6 @@ arm_warnings::arm_warnings::arm_warnings() :
   // Get private parameters
   // Note: MoveGroup doesn't like namespaces, so each instance of this node needs a unique node name
   ros::NodeHandle pn("~");
-  //pn.param("condition_threshold", cond_number_threshold_, 50.0);
   pn.getParam("minimum_joint_rad", rad_min_);
   pn.getParam("maximum_joint_rad", rad_max_);
   pn.getParam("marker_id", marker_id_);
@@ -84,7 +83,7 @@ arm_warnings::arm_warnings::arm_warnings() :
   jt_marker_.color.g = 0.0f;
   jt_marker_.color.b = 0.0f;
   jt_marker_.color.a = 1.0;
-  jt_marker_.lifetime = ros::Duration(0.5);
+  jt_marker_.lifetime = ros::Duration(0);
 
   jt_marker_.pose.position.x = 0;
   jt_marker_.pose.position.y = 0;
@@ -128,6 +127,12 @@ void arm_warnings::arm_warnings::jointStateCB(sensor_msgs::JointStateConstPtr ms
     throwJointLimitError(status);
   else if (  status == joint_limit_status::LOW_LIMIT_WARNING || status == joint_limit_status::HIGH_LIMIT_WARNING )
     throwJointLimitWarning(status);
+  // Hide the marker
+  else
+  {
+    jt_marker_.color.a = 0.0;
+    marker_pub_.publish(jt_marker_);
+  }
 }
 
 const sensor_msgs::JointState arm_warnings::arm_warnings::extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const
