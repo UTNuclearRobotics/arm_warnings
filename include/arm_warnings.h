@@ -2,7 +2,7 @@
 #define arm_warning_H
 
 #include <eigen3/Eigen/Eigenvalues>
-#include <moveit/move_group_interface/move_group.h>
+#include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_state/robot_state.h>
 #include "ros/ros.h"
@@ -27,8 +27,8 @@ private:
 
   //void throwSingularityAlarm();
 
-  enum warn_or_error { fine = 0, warning = 1, error = 2 };
-  warn_or_error checkJointLimits(const sensor_msgs::JointState &group_joints);
+  enum joint_limit_status { OK = 0, WARNING = 1, ERROR = 2 };
+  joint_limit_status checkJointLimits(const sensor_msgs::JointState &group_joints);
 
   void throwJointLimitWarning();
   void throwJointLimitError();
@@ -48,7 +48,7 @@ private:
 
   robot_state::RobotStatePtr kinematic_state_;
 
-  moveit::planning_interface::MoveGroup* move_group_;
+  moveit::planning_interface::MoveGroupInterface* move_group_;
 
   std::string move_group_name_, troublesome_jt_;
 

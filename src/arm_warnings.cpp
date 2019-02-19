@@ -42,7 +42,6 @@ int main(int argc, char** argv)
   return 0;
 }
 
-
 arm_warnings::arm_warnings::arm_warnings() :
   move_group_(NULL)
 {
@@ -61,7 +60,7 @@ arm_warnings::arm_warnings::arm_warnings() :
     delete move_group_;
   }
   
-  move_group_ = new moveit::planning_interface::MoveGroup(move_group_name_);
+  move_group_ = new moveit::planning_interface::MoveGroupInterface(move_group_name_);
 
   robot_model_loader::RobotModelLoader model_loader("robot_description");
   robot_model::RobotModelPtr kinematic_model = model_loader.getModel();
@@ -73,12 +72,13 @@ arm_warnings::arm_warnings::arm_warnings() :
 
   // This marker indicates the joint that has an error. It's a red sphere
   jt_marker_.id = marker_id_;
-  jt_marker_.type = visualization_msgs::Marker::SPHERE;
+  jt_marker_.type = visualization_msgs::Marker::MESH_RESOURCE;
+  jt_marker_.mesh_resource = "package://arm_warnings/meshes/arrow.STL";
   jt_marker_.action = visualization_msgs::Marker::ADD;
 
-  jt_marker_.scale.x = 0.2;
-  jt_marker_.scale.y = 0.2;
-  jt_marker_.scale.z = 0.2;
+  jt_marker_.scale.x = 1;
+  jt_marker_.scale.y = 1;
+  jt_marker_.scale.z = 1;
 
   jt_marker_.color.r = 1.0f;
   jt_marker_.color.g = 0.0f;
@@ -107,7 +107,6 @@ arm_warnings::arm_warnings::arm_warnings() :
   }
 }
 
-
 void arm_warnings::arm_warnings::jointStateCB(sensor_msgs::JointStateConstPtr msg)
 {
   // Check that the msg contains joints
@@ -122,16 +121,14 @@ void arm_warnings::arm_warnings::jointStateCB(sensor_msgs::JointStateConstPtr ms
   
   kinematic_state_->setVariableValues(group_joints);
   Eigen::MatrixXd jacobian = kinematic_state_->getJacobian(joint_model_group_);
-  
-  //if (!checkConditionNumber(jacobian, cond_number_threshold_))
-  //  throwSingularityAlarm();
 
-  if ( checkJointLimits(group_joints) == error )
+  arm_warnings::arm_warnings::joint_limit_status status = checkJointLimits(group_joints);
+
+  if ( status == joint_limit_status::ERROR )
     throwJointLimitError();
-  else if ( checkJointLimits(group_joints) == warning )
+  else if (  status == joint_limit_status::WARNING )
     throwJointLimitWarning();
 }
-
 
 const sensor_msgs::JointState arm_warnings::arm_warnings::extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const
 {
@@ -147,69 +144,42 @@ const sensor_msgs::JointState arm_warnings::arm_warnings::extractMyJointInfo(sen
     }
   }
   
-  return my_joint_info;  
+  return my_joint_info;
 }
 
-
-/*
-bool arm_warnings::arm_warnings::checkConditionNumber(const Eigen::MatrixXd &matrix, double threshold) const
-{
-  // Get Eigenvalues
-  const Eigen::MatrixXd::EigenvaluesReturnType eigs = matrix.eigenvalues();
-  const Eigen::VectorXd eig_vector = eigs.cwiseAbs();
-  
-  // CN = max(eigs)/min(eigs)
-  const double min = eig_vector.minCoeff();
-  const double max = eig_vector.maxCoeff();
-  
-  const double condition_number = max/min;
-  return (condition_number < threshold);
-}
-*/
-
-
-arm_warnings::arm_warnings::warn_or_error arm_warnings::arm_warnings::checkJointLimits(const sensor_msgs::JointState &group_joints)
+arm_warnings::arm_warnings::joint_limit_status arm_warnings::arm_warnings::checkJointLimits(const sensor_msgs::JointState &group_joints)
 {
 
   if ( !group_joints.name.empty() )
   {
     // Check for an error firts: limit exceeded
-    for (int i=0; i<group_joints.position.size(); i++)
+    for (int i=0; i<group_joints.position.size(); ++i)
     {
       if ( (group_joints.position.at(i)<rad_min_) || (group_joints.position.at(i)>rad_max_) )
       {
       	troublesome_jt_ = std::string(group_joints.name[i]);
-        return error;
+        return ERROR;
       }
     }
 
   	// Now check for a warning: close to limit
-	for (int i=0; i<group_joints.position.size(); i++)
+	for (int i=0; i<group_joints.position.size(); ++i)
     {
       if ( fabs( rad_min_-group_joints.position.at(i)  )<0.2 || ( rad_max_-group_joints.position.at(i) )<0.2 )
       {
       	troublesome_jt_ = std::string(group_joints.name[i]);
-        return warning;
+        return WARNING;
       }
   	}
   }
    
-  return fine;
+  return OK;
 }
-
-
-/*
-void arm_warnings::arm_warnings::throwSingularityAlarm()
-{
-  ROS_ERROR_STREAM_THROTTLE(2, "Warning: Singularity");
-}
-*/
-
 
 void arm_warnings::arm_warnings::throwJointLimitWarning()
 {
   // Find the tf frame corresponding to the troublesome jt
-  for (int i=0; i<jt_tf_names_.size(); i++)
+  for (int i=0; i<jt_tf_names_.size(); ++i)
   {
   	if ( jt_tf_names_[i].first == troublesome_jt_ )
   	{
@@ -228,13 +198,12 @@ void arm_warnings::arm_warnings::throwJointLimitWarning()
   marker_pub_.publish(jt_marker_);
 }
 
-
 void arm_warnings::arm_warnings::throwJointLimitError()
 {
   ROS_ERROR_STREAM_THROTTLE(2, "Warning: Joint Limit");
 
   // Find the tf frame corresponding to the troublesome jt
-  for (int i=0; i<jt_tf_names_.size(); i++)
+  for (int i=0; i<jt_tf_names_.size(); ++i)
   {
     //Frame id must match a tf
   	if ( jt_tf_names_[i].first == troublesome_jt_ )
@@ -252,7 +221,6 @@ void arm_warnings::arm_warnings::throwJointLimitError()
   jt_marker_.header.stamp = ros::Time::now();
   marker_pub_.publish(jt_marker_);
 }
-
 
 // Create a paired list of joint & tf names so we can get the joint locations
 void arm_warnings::arm_warnings::create_jt_tf_list(std::string prefix)
