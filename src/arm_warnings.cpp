@@ -205,11 +205,11 @@ void arm_warnings::arm_warnings::throwJointLimitWarning(arm_warnings::arm_warnin
   // (This assumes joint z-axis directions are consistent.)
   if (status == HIGH_LIMIT_WARNING)
   {
-    tf2::Quaternion q_rot, q;
-    q_rot.setRPY(0, 0, 3.14159);
-    tf2::convert(jt_marker_.pose.orientation , q);
-    q = q_rot * q;
-    tf2::convert(q, jt_marker_.pose.orientation);
+    // This is equivalent to a 180* rotation about Z
+    jt_marker_.pose.orientation.x = 0;
+    jt_marker_.pose.orientation.y = 0;
+    jt_marker_.pose.orientation.z = 1;
+    jt_marker_.pose.orientation.w = 0;
   }
 
   // Indicate the troublesome joint in RViz
@@ -241,11 +241,11 @@ void arm_warnings::arm_warnings::throwJointLimitError(arm_warnings::arm_warnings
   // (This assumes joint z-axis directions are consistent.)
   if (status == HIGH_LIMIT_ERROR)
   {
-    tf2::Quaternion q_rot, q;
-    q_rot.setRPY(0, 0, 3.14159);
-    tf2::convert(jt_marker_.pose.orientation , q);
-    q = q_rot * q;
-    tf2::convert(q, jt_marker_.pose.orientation);
+    // This is equivalent to a 180* rotation about Z
+    jt_marker_.pose.orientation.x = 0;
+    jt_marker_.pose.orientation.y = 0;
+    jt_marker_.pose.orientation.z = 1;
+    jt_marker_.pose.orientation.w = 0;
   }
 
   // Indicate the troublesome joint in RViz
