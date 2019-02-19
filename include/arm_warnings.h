@@ -5,9 +5,10 @@
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_state/robot_state.h>
-#include "ros/ros.h"
-#include "sensor_msgs/JointState.h"
-#include "sound_play/sound_play.h"
+#include <ros/ros.h>
+#include <sensor_msgs/JointState.h>
+#include <sound_play/sound_play.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <visualization_msgs/Marker.h>
 
 namespace arm_warnings
@@ -27,11 +28,11 @@ private:
 
   //void throwSingularityAlarm();
 
-  enum joint_limit_status { OK = 0, WARNING = 1, ERROR = 2 };
+  enum joint_limit_status { OK = 0, LOW_LIMIT_WARNING = 1, LOW_LIMIT_ERROR = 2, HIGH_LIMIT_WARNING = 3, HIGH_LIMIT_ERROR = 4 };
   joint_limit_status checkJointLimits(const sensor_msgs::JointState &group_joints);
 
-  void throwJointLimitWarning();
-  void throwJointLimitError();
+  void throwJointLimitWarning(joint_limit_status status);
+  void throwJointLimitError(joint_limit_status status);
 
   // Create a paired list of joint & tf names so we can get the joint locations
   void create_jt_tf_list(std::string prefix);

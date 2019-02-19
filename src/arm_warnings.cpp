@@ -84,7 +84,7 @@ arm_warnings::arm_warnings::arm_warnings() :
   jt_marker_.color.g = 0.0f;
   jt_marker_.color.b = 0.0f;
   jt_marker_.color.a = 1.0;
-  jt_marker_.lifetime = ros::Duration(0.2);
+  jt_marker_.lifetime = ros::Duration(0.5);
 
   jt_marker_.pose.position.x = 0;
   jt_marker_.pose.position.y = 0;
@@ -124,10 +124,10 @@ void arm_warnings::arm_warnings::jointStateCB(sensor_msgs::JointStateConstPtr ms
 
   arm_warnings::arm_warnings::joint_limit_status status = checkJointLimits(group_joints);
 
-  if ( status == joint_limit_status::ERROR )
-    throwJointLimitError();
-  else if (  status == joint_limit_status::WARNING )
-    throwJointLimitWarning();
+  if ( status == joint_limit_status::LOW_LIMIT_ERROR || status == joint_limit_status::HIGH_LIMIT_ERROR )
+    throwJointLimitError(status);
+  else if (  status == joint_limit_status::LOW_LIMIT_WARNING || status == joint_limit_status::HIGH_LIMIT_WARNING )
+    throwJointLimitWarning(status);
 }
 
 const sensor_msgs::JointState arm_warnings::arm_warnings::extractMyJointInfo(sensor_msgs::JointStateConstPtr original) const
@@ -147,28 +147,40 @@ const sensor_msgs::JointState arm_warnings::arm_warnings::extractMyJointInfo(sen
   return my_joint_info;
 }
 
+// TODO: this only finds one joint near the limit before returning. There could be multiple.
 arm_warnings::arm_warnings::joint_limit_status arm_warnings::arm_warnings::checkJointLimits(const sensor_msgs::JointState &group_joints)
 {
 
   if ( !group_joints.name.empty() )
   {
-    // Check for an error firts: limit exceeded
+    // Check for an error first: limit exceeded
     for (int i=0; i<group_joints.position.size(); ++i)
     {
-      if ( (group_joints.position.at(i)<rad_min_) || (group_joints.position.at(i)>rad_max_) )
+      if (group_joints.position.at(i)<rad_min_)
       {
       	troublesome_jt_ = std::string(group_joints.name[i]);
-        return ERROR;
+        return LOW_LIMIT_ERROR;
+      }
+      else if (group_joints.position.at(i)>rad_max_)
+      {
+        troublesome_jt_ = std::string(group_joints.name[i]);
+        return HIGH_LIMIT_ERROR;
       }
     }
 
-  	// Now check for a warning: close to limit
+  // Now check for a warning: close to limit
 	for (int i=0; i<group_joints.position.size(); ++i)
     {
-      if ( fabs( rad_min_-group_joints.position.at(i)  )<0.2 || ( rad_max_-group_joints.position.at(i) )<0.2 )
+      if ( group_joints.position.at(i) < (rad_min_ + 0.2) )
       {
       	troublesome_jt_ = std::string(group_joints.name[i]);
-        return WARNING;
+        return LOW_LIMIT_WARNING;
+      }
+
+      else if (group_joints.position.at(i) > (rad_max_ - 0.2))
+      {
+        troublesome_jt_ = std::string(group_joints.name[i]);
+        return HIGH_LIMIT_WARNING;
       }
   	}
   }
@@ -176,7 +188,7 @@ arm_warnings::arm_warnings::joint_limit_status arm_warnings::arm_warnings::check
   return OK;
 }
 
-void arm_warnings::arm_warnings::throwJointLimitWarning()
+void arm_warnings::arm_warnings::throwJointLimitWarning(arm_warnings::arm_warnings::joint_limit_status status)
 {
   // Find the tf frame corresponding to the troublesome jt
   for (int i=0; i<jt_tf_names_.size(); ++i)
@@ -189,6 +201,17 @@ void arm_warnings::arm_warnings::throwJointLimitWarning()
   	}
   }
 
+  // Flip the arrow depending on whether we're close to a low limit or a high limit.
+  // (This assumes joint z-axis directions are consistent.)
+  if (status == HIGH_LIMIT_WARNING)
+  {
+    tf2::Quaternion q_rot, q;
+    q_rot.setRPY(0, 0, 3.14159);
+    tf2::convert(jt_marker_.pose.orientation , q);
+    q = q_rot * q;
+    tf2::convert(q, jt_marker_.pose.orientation);
+  }
+
   // Indicate the troublesome joint in RViz
   jt_marker_.color.r = 1.0f;
   jt_marker_.color.g = 0.5f;
@@ -198,11 +221,12 @@ void arm_warnings::arm_warnings::throwJointLimitWarning()
   marker_pub_.publish(jt_marker_);
 }
 
-void arm_warnings::arm_warnings::throwJointLimitError()
+void arm_warnings::arm_warnings::throwJointLimitError(arm_warnings::arm_warnings::joint_limit_status status)
 {
   ROS_ERROR_STREAM_THROTTLE(2, "Warning: Joint Limit");
 
-  // Find the tf frame corresponding to the troublesome jt
+  // Find the tf frame corresponding to the troublesome jt.
+  // Put the arrow there.
   for (int i=0; i<jt_tf_names_.size(); ++i)
   {
     //Frame id must match a tf
@@ -211,6 +235,17 @@ void arm_warnings::arm_warnings::throwJointLimitError()
       jt_marker_.header.frame_id = jt_tf_names_[i].second;
       break;
   	}
+  }
+
+  // Flip the arrow depending on whether we're close to a low limit or a high limit.
+  // (This assumes joint z-axis directions are consistent.)
+  if (status == HIGH_LIMIT_ERROR)
+  {
+    tf2::Quaternion q_rot, q;
+    q_rot.setRPY(0, 0, 3.14159);
+    tf2::convert(jt_marker_.pose.orientation , q);
+    q = q_rot * q;
+    tf2::convert(q, jt_marker_.pose.orientation);
   }
 
   // Indicate the troublesome joint in RViz
