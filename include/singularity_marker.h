@@ -2,7 +2,7 @@
 #define arm_warning_H
 
 #include <eigen3/Eigen/Eigenvalues>
-#include <moveit/move_group_interface/move_group.h>
+#include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_state/robot_state.h>
 #include "ros/ros.h"
